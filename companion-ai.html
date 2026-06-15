@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>반려 AI</title>
+<style>
+  :root{
+    --bg-0:#070b16;
+    --bg-1:#0e1426;
+    --eye:#5eead4;        /* 기본: 청록 */
+    --eye-listen:#38bdf8; /* 듣기: 하늘 */
+    --eye-think:#fbbf24;  /* 생각: 호박 */
+    --eye-speak:#34d399;  /* 말하기: 초록 */
+    --eye-now:var(--eye);
+    --ink:#e7ecf5;
+    --muted:#7e89a6;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(120% 120% at 50% 30%, var(--bg-1), var(--bg-0) 70%);
+    color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100dvh;
+    touch-action:manipulation;
+  }
+
+  /* ---------- 얼굴 ---------- */
+  .face{
+    display:flex;gap:min(11vw,90px);align-items:center;justify-content:center;
+    transition:transform .5s cubic-bezier(.22,1,.36,1);
+    will-change:transform;
+  }
+  .eye{
+    width:min(26vw,150px);height:min(34vw,200px);
+    background:linear-gradient(180deg, var(--eye-now), color-mix(in srgb, var(--eye-now) 55%, #000));
+    border-radius:48% 48% 46% 46%/60% 60% 40% 40%;
+    box-shadow:
+      0 0 8px var(--eye-now),
+      0 0 40px color-mix(in srgb, var(--eye-now) 70%, transparent),
+      0 0 90px color-mix(in srgb, var(--eye-now) 45%, transparent),
+      inset 0 -14px 30px rgba(0,0,0,.35),
+      inset 0 12px 22px rgba(255,255,255,.25);
+    transition:height .18s ease, background .6s ease, box-shadow .6s ease, transform .3s ease;
+    position:relative;
+  }
+  .eye::after{ /* 하이라이트 */
+    content:"";position:absolute;top:14%;left:22%;
+    width:26%;height:22%;border-radius:50%;
+    background:rgba(255,255,255,.55);filter:blur(1px);
+  }
+
+  /* 깜빡임 */
+  @keyframes blink{ 0%,92%,100%{height:var(--eh,200px);} 96%{height:8px;} }
+  .face.idle .eye{ animation:blink 5.2s infinite; }
+  .face.idle .eye:nth-child(2){ animation-delay:.08s; }
+
+  /* 살짝 둘러보기 */
+  @keyframes glance{ 0%,70%,100%{transform:translateX(0);} 80%{transform:translateX(-14px);} 90%{transform:translateX(12px);} }
+  .face.idle{ animation:glance 9s infinite; }
+
+  /* 듣기: 눈 커지고 또렷 */
+  .face.listening .eye{ --eye-now:var(--eye-listen); transform:scaleY(1.06); }
+  .face.listening{ transform:scale(1.04); }
+
+  /* 생각: 눈 위로 굴리고 가늘게 */
+  .face.thinking{ transform:translateY(-10px); }
+  .face.thinking .eye{ --eye-now:var(--eye-think); height:calc(var(--eh,200px)*.55); transform:translateY(-8%); }
+
+  /* 말하기: 통통 튐 */
+  @keyframes talk{ 0%,100%{transform:scaleY(1);} 50%{transform:scaleY(.86);} }
+  .face.speaking .eye{ --eye-now:var(--eye-speak); animation:talk .26s infinite; }
+  .face.speaking .eye:nth-child(2){ animation-delay:.13s; }
+
+  @media (prefers-reduced-motion: reduce){
+    .face,.face .eye{animation:none !important;}
+  }
+
+  /* ---------- 자막 / 상태 ---------- */
+  .caption{
+    position:fixed;left:0;right:0;bottom:max(24px,env(safe-area-inset-bottom));
+    padding:0 22px;text-align:center;font-size:17px;line-height:1.5;
+    color:var(--ink);min-height:52px;opacity:.95;
+    transition:opacity .3s;pointer-events:none;
+  }
+  .caption .who{display:block;font-size:12px;color:var(--muted);margin-bottom:3px;letter-spacing:.04em;}
+  .pill{
+    position:fixed;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+    font-size:12.5px;color:var(--muted);background:rgba(255,255,255,.05);
+    padding:7px 15px;border-radius:999px;border:1px solid rgba(255,255,255,.08);
+    backdrop-filter:blur(6px);letter-spacing:.02em;
+  }
+  .gear{
+    position:fixed;top:max(14px,env(safe-area-inset-top));right:16px;
+    width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.04);color:var(--muted);font-size:18px;
+    display:grid;place-items:center;cursor:pointer;
+  }
+
+  /* ---------- 설정 화면 ---------- */
+  .setup{
+    position:fixed;inset:0;z-index:20;background:var(--bg-0);
+    display:flex;flex-direction:column;justify-content:center;
+    padding:32px 26px;gap:18px;overflow:auto;
+  }
+  .setup h1{font-size:23px;margin:0 0 2px;font-weight:700;}
+  .setup p.sub{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.55;}
+  .field{display:flex;flex-direction:column;gap:7px;}
+  .field label{font-size:13px;color:var(--muted);}
+  .field input,.field textarea{
+    background:#121a30;border:1px solid rgba(255,255,255,.12);color:var(--ink);
+    border-radius:12px;padding:13px 14px;font-size:15px;font-family:inherit;width:100%;
+  }
+  .field textarea{resize:vertical;min-height:62px;}
+  .hint{font-size:12px;color:var(--muted);}
+  .start{
+    margin-top:8px;background:linear-gradient(180deg,var(--eye-listen),#1d77c9);
+    color:#04121f;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;
+    cursor:pointer;letter-spacing:.02em;
+  }
+  .warn{font-size:12.5px;color:#f4b860;background:rgba(244,184,96,.08);
+    border:1px solid rgba(244,184,96,.2);border-radius:10px;padding:11px 13px;line-height:1.5;}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+  <!-- 설정 -->
+  <div class="setup" id="setup">
+    <h1>반려 AI 만들기</h1>
+    <p class="sub">호출어로 깨우고, 음성으로 대화하고, 화면엔 표정이 살아납니다. 폰을 세워두면 작은 친구가 돼요.</p>
+
+    <div class="field">
+      <label>Gemini API 키</label>
+      <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off">
+    </div>
+    <div class="field">
+      <label>이름</label>
+      <input id="botName" type="text" value="코코" maxlength="12">
+    </div>
+    <div class="field">
+      <label>호출어 (이 말이 들리면 깨어남)</label>
+      <input id="wakeWord" type="text" value="코코야" maxlength="20">
+    </div>
+    <div class="field">
+      <label>성격 (어떻게 말할지)</label>
+      <textarea id="persona">밝고 다정한 책상 위 반려 친구. 짧고 친근하게 반말로 대답해.</textarea>
+    </div>
+
+    <div class="warn">📱 폰에서 마이크를 쓰려면 <b>https 주소</b>로 열어야 해요. 파일을 그냥 열면 음성 인식이 막힙니다. GitHub Pages·Netlify 같은 무료 호스팅에 올려서 여세요.</div>
+
+    <button class="start" id="startBtn">시작하기 (마이크 허용)</button>
+  </div>
+
+  <!-- 메인 -->
+  <div class="pill hidden" id="pill">잠자는 중 · "코코야" 라고 불러보세요</div>
+  <div class="gear hidden" id="gear">⚙</div>
+
+  <div class="face idle" id="face" style="--eh:200px">
+    <div class="eye"></div>
+    <div class="eye"></div>
+  </div>
+
+  <div class="caption hidden" id="caption"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const face = $('#face'), pill = $('#pill'), cap = $('#caption');
+let cfg = {}, recog, awake=false, busy=false, speaking=false, history=[], idleT, wakeLock, koVoice=null;
+
+/* 음성 목록 로딩 */
+function loadVoices(){
+  const vs = speechSynthesis.getVoices().filter(v=>v.lang && v.lang.toLowerCase().startsWith('ko'));
+  koVoice = vs[0] || null;
+}
+speechSynthesis.onvoiceschanged = loadVoices; loadVoices();
+
+const norm = s => (s||'').replace(/[\s.,!?~^"'·…]/g,'').toLowerCase();
+
+function setFace(state){
+  face.className = 'face ' + state;
+  const labels = {idle:`잠자는 중 · "${cfg.wakeWord}" 라고 불러보세요`,
+                  listening:'듣고 있어요…', thinking:'생각 중…', speaking:'말하는 중…'};
+  pill.textContent = labels[state] || '';
+}
+function showCap(who, text){
+  cap.classList.remove('hidden');
+  cap.innerHTML = `<span class="who">${who}</span>${text}`;
+}
+
+/* ---- 시작 ---- */
+$('#startBtn').onclick = async () => {
+  cfg = {
+    apiKey: $('#apiKey').value.trim(),
+    botName: $('#botName').value.trim() || '코코',
+    wakeWord: $('#wakeWord').value.trim() || '코코야',
+    persona: $('#persona').value.trim()
+  };
+  if(!cfg.apiKey){ alert('Gemini API 키를 입력해 주세요.'); return; }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ alert('이 브라우저는 음성 인식을 지원하지 않아요. 안드로이드 크롬에서 열어주세요.'); return; }
+
+  try { await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ alert('마이크 권한이 필요해요.'); return; }
+
+  $('#setup').classList.add('hidden');
+  pill.classList.remove('hidden'); $('#gear').classList.remove('hidden');
+  requestWakeLock();
+  initRecog(SR);
+  setFace('idle');
+};
+$('#gear').onclick = () => location.reload();
+
+/* ---- 음성 인식 ---- */
+function initRecog(SR){
+  recog = new SR();
+  recog.lang = 'ko-KR';
+  recog.continuous = true;
+  recog.interimResults = false;
+  recog.onresult = onResult;
+  recog.onerror = e => { if(e.error==='not-allowed') alert('마이크 권한이 거부됐어요.'); };
+  recog.onend = () => { if(!speaking) safeStart(); };
+  safeStart();
+}
+function safeStart(){ try{ recog.start(); }catch(e){} }
+
+function onResult(e){
+  if(busy || speaking) return;
+  const text = e.results[e.results.length-1][0].transcript.trim();
+  if(!text) return;
+
+  if(!awake){
+    const w = norm(cfg.wakeWord);
+    const t = norm(text);
+    if(t.includes(w)){
+      // 호출어 뒤에 바로 질문이 붙었는지 확인
+      const idx = text.search(new RegExp(cfg.wakeWord.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'));
+      const rest = idx>=0 ? text.slice(idx+cfg.wakeWord.length).trim() : '';
+      wake(rest);
+    }
+  } else {
+    ask(text);
+  }
+}
+
+function wake(rest){
+  awake = true; resetIdle();
+  if(rest){ ask(rest); }
+  else { setFace('listening'); chime(); showCap(cfg.botName, '응, 듣고 있어!'); }
+}
+
+async function ask(q){
+  busy = true; clearTimeout(idleT);
+  try{ recog.stop(); }catch(e){}
+  showCap('나', q);
+  setFace('thinking');
+
+  try{
+    const reply = await callGemini(q);
+    history.push({role:'user',content:q},{role:'assistant',content:reply});
+    if(history.length>16) history = history.slice(-16);
+    await speak(reply);
+  }catch(err){
+    await speak('미안, 지금 연결이 잘 안 돼.');
+    console.error(err);
+  }
+  busy = false;
+  setFace('listening'); resetIdle(); safeStart();
+}
+
+async function callGemini(q){
+  const sys = `${cfg.persona}\n너의 이름은 ${cfg.botName}. 음성으로 듣는 대화이니 1~2문장으로 짧게, 자연스러운 한국어로만 답해. 이모지나 기호 나열은 쓰지 마.`;
+
+  // 대화 기록을 Gemini 형식으로 변환 (assistant -> model, content -> parts)
+  const contents = history.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }]
+  }));
+  contents.push({ role:'user', parts:[{ text:q }] });
+
+  const MODEL = 'gemini-2.5-flash'; // 더 똑똑하게 쓰려면 'gemini-3.5-flash' 로 바꾸세요
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,{
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-goog-api-key':cfg.apiKey },
+    body:JSON.stringify({
+      system_instruction:{ parts:[{ text:sys }] },
+      contents,
+      generationConfig:{ temperature:0.8, maxOutputTokens:300, thinkingConfig:{ thinkingBudget:0 } }
+    })
+  });
+  if(!res.ok){ throw new Error('API '+res.status); }
+  const data = await res.json();
+  const text = (data?.candidates?.[0]?.content?.parts || []).map(p=>p.text||'').join('');
+  return text.trim() || '음, 잘 못 들었어. 다시 말해줄래?';
+}
+
+function speak(text){
+  return new Promise(resolve=>{
+    showCap(cfg.botName, text);
+    setFace('speaking'); speaking = true;
+    try{ recog.stop(); }catch(e){}
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang='ko-KR'; if(koVoice) u.voice=koVoice; u.rate=1.04; u.pitch=1.05;
+    u.onend = () => { speaking=false; resolve(); };
+    u.onerror = () => { speaking=false; resolve(); };
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  });
+}
+
+/* 깨어남 알림음 */
+function chime(){
+  try{
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.frequency.value=880; g.gain.value=0.0001;
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.18, ac.currentTime+0.02);
+    o.frequency.exponentialRampToValueAtTime(1320, ac.currentTime+0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime+0.2);
+    o.stop(ac.currentTime+0.22);
+  }catch(e){}
+}
+
+/* 일정 시간 조용하면 다시 잠 */
+function resetIdle(){
+  clearTimeout(idleT);
+  idleT = setTimeout(()=>{
+    awake=false; setFace('idle');
+    cap.classList.add('hidden');
+  }, 18000);
+}
+
+/* 화면 꺼짐 방지 */
+async function requestWakeLock(){
+  try{ wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible'){ requestWakeLock(); if(recog && !speaking) safeStart(); }
+});
+</script>
+</body>
+</html>
