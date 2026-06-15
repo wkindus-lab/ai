@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<!-- saved from url=(0048)file:///C:/Users/stn/Downloads/companion-ai.html -->
-<html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>반려 AI</title>
 <style>
@@ -204,8 +204,10 @@ $('#startBtn').onclick = async () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ alert('이 브라우저는 음성 인식을 지원하지 않아요. 안드로이드 크롬에서 열어주세요.'); return; }
 
-  try { await navigator.mediaDevices.getUserMedia({audio:true}); }
-  catch(e){ alert('마이크 권한이 필요해요.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    stream.getTracks().forEach(t => t.stop());  // 권한만 확인하고 마이크는 즉시 놓아줌 (인식기가 써야 하므로)
+  } catch(e){ alert('마이크 권한이 필요해요.'); return; }
 
   $('#setup').classList.add('hidden');
   pill.classList.remove('hidden'); $('#gear').classList.remove('hidden');
@@ -231,10 +233,15 @@ function initRecog(SR){
   recog.onresult = onResult;
   recog.onerror = e => {
     if(e.error==='not-allowed' || e.error==='service-not-allowed'){
-      showCap('마이크', '⚠ 마이크가 막혀 있어요. 주소창 자물쇠 → 마이크 → 허용');
+      showCap('마이크', '⚠ 마이크 권한이 막혀 있어요. 주소창 자물쇠 → 마이크 → 허용');
+    } else if(e.error==='audio-capture'){
+      showCap('마이크', '⚠ 마이크를 못 잡았어요. 다른 앱이 마이크를 쓰는지 확인하세요.');
+    } else if(e.error==='network'){
+      showCap('마이크', '⚠ 인식 서버에 연결 못 했어요. 네트워크를 확인하세요.');
     }
     // no-speech, aborted 등은 무시하고 onend에서 다시 시작
   };
+  recog.onstart = () => { if(!awake && !busy && !speaking) showCap('마이크', '🎙 듣고 있어요 — 말해보세요'); };
   recog.onend = () => { if(!speaking) setTimeout(safeStart, 300); };
   safeStart();
 }
@@ -369,6 +376,5 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){ requestWakeLock(); if(recog && !speaking) safeStart(); }
 });
 </script>
-
-
-</body></html>
+</body>
+</html>
