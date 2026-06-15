@@ -188,6 +188,7 @@ function setFace(state){
   pill.textContent = labels[state] || '';
 }
 function showCap(who, text){
+  return; // 자막 끔 — 다시 켜려면 이 줄을 지우세요
   cap.classList.remove('hidden');
   cap.innerHTML = `<span class="who">${who}</span>${text}`;
 }
