@@ -1,7 +1,7 @@
 <!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
+<!-- saved from url=(0048)file:///C:/Users/stn/Downloads/companion-ai.html -->
+<html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>반려 AI</title>
 <style>
@@ -142,8 +142,8 @@
       <input id="botName" type="text" value="코코" maxlength="12">
     </div>
     <div class="field">
-      <label>호출어 (이 말이 들리면 깨어남)</label>
-      <input id="wakeWord" type="text" value="코코야" maxlength="20">
+      <label>호출어 (쉼표로 여러 개 — 비슷한 발음까지 넣으면 잘 깨어나요)</label>
+      <input id="wakeWord" type="text" value="코코야, 코코, 코코아, 꼬꼬야" maxlength="60">
     </div>
     <div class="field">
       <label>성격 (어떻게 말할지)</label>
@@ -182,7 +182,7 @@ const norm = s => (s||'').replace(/[\s.,!?~^"'·…]/g,'').toLowerCase();
 
 function setFace(state){
   face.className = 'face ' + state;
-  const labels = {idle:`잠자는 중 · "${cfg.wakeWord}" 라고 불러보세요`,
+  const labels = {idle:`잠자는 중 · "${wakeList()[0]||'코코야'}" 부르거나 화면을 탭`,
                   listening:'듣고 있어요…', thinking:'생각 중…', speaking:'말하는 중…'};
   pill.textContent = labels[state] || '';
 }
@@ -215,36 +215,62 @@ $('#startBtn').onclick = async () => {
 };
 $('#gear').onclick = () => location.reload();
 
+/* 화면을 탭하면 호출어 없이 바로 깨어남 (호출어 문제 우회 / 진단용) */
+$('#face').addEventListener('click', () => {
+  if($('#setup').classList.contains('hidden') && !awake && !busy && !speaking){
+    wake('');
+  }
+});
+
 /* ---- 음성 인식 ---- */
 function initRecog(SR){
   recog = new SR();
   recog.lang = 'ko-KR';
   recog.continuous = true;
-  recog.interimResults = false;
+  recog.interimResults = true;   // 중간 결과까지 받아서 인식 상태를 화면에 표시
   recog.onresult = onResult;
-  recog.onerror = e => { if(e.error==='not-allowed') alert('마이크 권한이 거부됐어요.'); };
-  recog.onend = () => { if(!speaking) safeStart(); };
+  recog.onerror = e => {
+    if(e.error==='not-allowed' || e.error==='service-not-allowed'){
+      showCap('마이크', '⚠ 마이크가 막혀 있어요. 주소창 자물쇠 → 마이크 → 허용');
+    }
+    // no-speech, aborted 등은 무시하고 onend에서 다시 시작
+  };
+  recog.onend = () => { if(!speaking) setTimeout(safeStart, 300); };
   safeStart();
 }
-function safeStart(){ try{ recog.start(); }catch(e){} }
+function safeStart(){ if(speaking) return; try{ recog.start(); }catch(e){} }
+
+/* 호출어 도우미 (쉼표로 여러 개) */
+function wakeList(){ return (cfg.wakeWord||'').split(',').map(s=>s.trim()).filter(Boolean); }
+function matchWake(text){
+  const t = norm(text);
+  for(const w of wakeList()){ const nw=norm(w); if(nw && t.includes(nw)) return w; }
+  return null;
+}
+function restAfter(text, w){
+  const i = norm(text).indexOf(norm(w));
+  if(i<0) return '';
+  return text.slice(Math.min(text.length, i + w.length)).replace(/^[\s,.!?~]+/,'').trim();
+}
 
 function onResult(e){
+  let interim='', final='';
+  for(let i=e.resultIndex; i<e.results.length; i++){
+    const r=e.results[i];
+    if(r.isFinal) final += r[0].transcript; else interim += r[0].transcript;
+  }
+  const heard = (final || interim).trim();
   if(busy || speaking) return;
-  const text = e.results[e.results.length-1][0].transcript.trim();
-  if(!text) return;
 
   if(!awake){
-    const w = norm(cfg.wakeWord);
-    const t = norm(text);
-    if(t.includes(w)){
-      // 호출어 뒤에 바로 질문이 붙었는지 확인
-      const idx = text.search(new RegExp(cfg.wakeWord.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'));
-      const rest = idx>=0 ? text.slice(idx+cfg.wakeWord.length).trim() : '';
-      wake(rest);
-    }
-  } else {
-    ask(text);
+    if(heard) showCap('마이크', '들린 말: ' + heard);  // 인식이 살아있는지 확인용
+    const hit = matchWake(heard);
+    if(hit) wake(restAfter(heard, hit));
+    return;
   }
+  // 깨어 있을 때: 확정된 문장만 질문으로, 말하는 중엔 미리 보여줌
+  if(final.trim()) ask(final.trim());
+  else if(interim) showCap('나', interim);
 }
 
 function wake(rest){
@@ -343,5 +369,6 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='visible'){ requestWakeLock(); if(recog && !speaking) safeStart(); }
 });
 </script>
-</body>
-</html>
+
+
+</body></html>
