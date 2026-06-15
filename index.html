@@ -157,6 +157,7 @@
 
   <!-- 메인 -->
   <div class="pill hidden" id="pill">잠자는 중 · "코코야" 라고 불러보세요</div>
+  <div class="gear hidden" id="fs" style="right:64px">⛶</div>
   <div class="gear hidden" id="gear">⚙</div>
 
   <div class="face idle" id="face" style="--eh:200px">
@@ -204,18 +205,31 @@ $('#startBtn').onclick = async () => {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ alert('이 브라우저는 음성 인식을 지원하지 않아요. 안드로이드 크롬에서 열어주세요.'); return; }
 
+  await goImmersive();   // 전체화면 + 가로 고정
+
   try {
     const stream = await navigator.mediaDevices.getUserMedia({audio:true});
     stream.getTracks().forEach(t => t.stop());  // 권한만 확인하고 마이크는 즉시 놓아줌 (인식기가 써야 하므로)
   } catch(e){ alert('마이크 권한이 필요해요.'); return; }
 
   $('#setup').classList.add('hidden');
-  pill.classList.remove('hidden'); $('#gear').classList.remove('hidden');
+  pill.classList.remove('hidden'); $('#gear').classList.remove('hidden'); $('#fs').classList.remove('hidden');
   requestWakeLock();
   initRecog(SR);
   setFace('idle');
 };
 $('#gear').onclick = () => location.reload();
+
+/* 전체화면 + 가로 고정 */
+async function goImmersive(){
+  const el = document.documentElement;
+  try{
+    if(el.requestFullscreen) await el.requestFullscreen();
+    else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+  }catch(e){}
+  try{ if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){}
+}
+$('#fs').onclick = goImmersive;
 
 /* 화면을 탭하면 호출어 없이 바로 깨어남 (호출어 문제 우회 / 진단용) */
 $('#face').addEventListener('click', () => {
